@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: DND-IT/github-workflows/.github/workflows/gh-release.yaml@v3
+    with:
+      use_semantic_release: true
+      app_id: ${{ vars.FISSION_GH_APP_ID }}
+    secrets:
+      app_private_key: ${{ secrets.FISSION_GH_APP_PRIVATE_KEY }}
+
+  notify-slack:
+    name: Notify Slack of Release
+    needs: [release]
+    if: needs.release.outputs.new_release_published == 'true'
+    uses: DND-IT/github-workflows/.github/workflows/notify-slack.yaml@v3
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+    with:
+      channel: "C09LG2L8EQ5" # #it_pts_dai_releases
+      notification_title: "New Terraform AWS CloudFront Okta Auth Release ${{ needs.release.outputs.new_release_git_tag }} 🚀"
+      notification_message: "A new release has been published!"
+      status: "success"
+      additional_fields: |
+        [
+          {"name": "Repository", "value": "<${{ github.server_url }}/${{ github.repository }}|${{ github.repository }}>"},
+          {"name": "Version", "value": "${{ needs.release.outputs.new_release_git_tag }}"}
+        ]
+      include_workflow_link: true
+      include_triggered_by: true
