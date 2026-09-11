@@ -60,6 +60,16 @@ run "rejects_empty_client_id" {
   expect_failures = [var.okta_client_id]
 }
 
+run "rejects_non_integer_secret_version" {
+  command = plan
+
+  variables {
+    okta_client_secret_version = 1.5
+  }
+
+  expect_failures = [var.okta_client_secret_version]
+}
+
 run "rejects_long_name" {
   command = plan
 

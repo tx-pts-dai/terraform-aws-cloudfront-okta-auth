@@ -16,9 +16,10 @@ A public Terraform registry module (`tx-pts-dai/cloudfront-okta-auth/aws`) that 
 
 ## Conventions
 
-- Conventional Commits; releases are cut by semantic-release on `main`. A Terraform interface change (removed/renamed variable or output, changed default that alters live infrastructure) is a MAJOR bump.
+- Conventional Commits; releases are cut by semantic-release on `main`. Mark interface changes (removed/renamed variable or output, changed default that alters live infrastructure, raised Terraform floor) as breaking (`feat!:` / `BREAKING CHANGE:`). While the module is `0.x`, `.releaserc.json` maps breaking changes to a MINOR bump; drop that rule when cutting `1.0.0`.
 - Do not template `auth.mjs`; keep shipped handler code byte-identical to what the unit tests exercise.
 - Never log or echo tokens, authorization codes or the client secret.
+- `okta_client_secret` is ephemeral and written via `value_wo`; never reference it outside that argument (no locals, outputs or `config.mjs`).
 - Run before opening a PR:
 
 ```shell

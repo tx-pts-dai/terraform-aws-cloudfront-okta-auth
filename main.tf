@@ -39,11 +39,12 @@ locals {
 }
 
 resource "aws_ssm_parameter" "client_secret" {
-  name        = local.ssm_param_name
-  description = "Okta client secret read by the ${var.name} Lambda@Edge function"
-  type        = "SecureString"
-  value       = var.okta_client_secret
-  tags        = var.tags
+  name             = local.ssm_param_name
+  description      = "Okta client secret read by the ${var.name} Lambda@Edge function"
+  type             = "SecureString"
+  value_wo         = var.okta_client_secret
+  value_wo_version = var.okta_client_secret_version
+  tags             = var.tags
 }
 
 resource "aws_iam_role" "this" {

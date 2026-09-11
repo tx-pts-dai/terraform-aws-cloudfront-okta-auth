@@ -80,6 +80,24 @@ run "client_secret_parameter" {
     condition     = aws_ssm_parameter.client_secret.name == "/cloudfront-okta-auth/okta-client-secret"
     error_message = "Unexpected parameter name"
   }
+
+  assert {
+    condition     = aws_ssm_parameter.client_secret.value_wo_version == 1
+    error_message = "Secret version marker must default to 1"
+  }
+}
+
+run "secret_rotation_bumps_version" {
+  command = plan
+
+  variables {
+    okta_client_secret_version = 2
+  }
+
+  assert {
+    condition     = aws_ssm_parameter.client_secret.value_wo_version == 2
+    error_message = "value_wo_version must follow okta_client_secret_version"
+  }
 }
 
 run "org_authorization_server_endpoints" {

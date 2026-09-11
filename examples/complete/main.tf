@@ -37,10 +37,11 @@ module "okta_auth" {
     aws = aws.us_east_1
   }
 
-  name               = "okta-auth-${random_pet.this.id}"
-  okta_client_id     = var.okta_client_id
-  okta_client_secret = var.okta_client_secret
-  okta_issuer        = var.okta_issuer
+  name                       = "okta-auth-${random_pet.this.id}"
+  okta_client_id             = var.okta_client_id
+  okta_client_secret         = var.okta_client_secret
+  okta_client_secret_version = var.okta_client_secret_version
+  okta_issuer                = var.okta_issuer
 }
 
 resource "aws_s3_bucket" "site" {

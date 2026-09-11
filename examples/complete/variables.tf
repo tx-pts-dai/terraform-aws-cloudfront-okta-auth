@@ -4,9 +4,16 @@ variable "okta_client_id" {
 }
 
 variable "okta_client_secret" {
-  description = "Client secret of the Okta OIDC web application."
+  description = "Client secret of the Okta OIDC web application. Pass it at runtime, e.g. TF_VAR_okta_client_secret; it is never written to state."
   type        = string
   sensitive   = true
+  ephemeral   = true
+}
+
+variable "okta_client_secret_version" {
+  description = "Increment after rotating the client secret in Okta."
+  type        = number
+  default     = 1
 }
 
 variable "okta_issuer" {

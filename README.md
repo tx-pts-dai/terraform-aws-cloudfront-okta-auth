@@ -2,7 +2,7 @@
 
 Puts Okta login in front of an existing CloudFront distribution. A single Lambda@Edge viewer-request function runs the OpenID Connect authorization-code flow (with PKCE) against Okta, stores the Okta ID token in a hardened session cookie and verifies its RS256 signature on every request. Unauthenticated visitors are redirected to Okta; everything else, including cached objects, stays behind the gate.
 
-The module only needs the Okta client id, client secret and issuer URL. It creates the Lambda@Edge function, its IAM role and an SSM SecureString parameter for the client secret, all in us-east-1, and returns the versioned function ARN to attach to your distribution.
+The module only needs the Okta client id, client secret and issuer URL. It creates the Lambda@Edge function, its IAM role and an SSM SecureString parameter for the client secret, all in us-east-1, and returns the versioned function ARN to attach to your distribution. The client secret is an ephemeral input written to SSM through a write-only argument, so it never lands in the Terraform plan or state.
 
 ## Usage
 
@@ -20,9 +20,10 @@ module "okta_auth" {
     aws = aws.us_east_1
   }
 
-  okta_client_id     = var.okta_client_id
-  okta_client_secret = var.okta_client_secret
-  okta_issuer        = "https://acme.okta.com" # or https://acme.okta.com/oauth2/default
+  okta_client_id             = var.okta_client_id
+  okta_client_secret         = var.okta_client_secret # ephemeral, never stored in state
+  okta_client_secret_version = 1                      # bump after rotating the secret in Okta
+  okta_issuer                = "https://acme.okta.com" # or https://acme.okta.com/oauth2/default
 }
 
 resource "aws_cloudfront_distribution" "site" {
@@ -59,6 +60,21 @@ Assign the users or groups that may access the site to the application. Anyone n
 - Org authorization server: `https://acme.okta.com` (endpoints under `https://acme.okta.com/oauth2/v1/`)
 - Custom authorization server: `https://acme.okta.com/oauth2/default` (endpoints under the issuer)
 
+## Handling the client secret
+
+`okta_client_secret` is declared `ephemeral`, and the module writes it to SSM with the provider's write-only `value_wo` argument. Terraform discards the value after the operation: it is not in the plan file, not in the state, and not visible in `terraform show`. Two consequences:
+
+- The value you pass in must itself be ephemeral or come from outside the configuration. Declare your own variable with `ephemeral = true` and supply it at runtime (`TF_VAR_okta_client_secret` in CI, or `-var` locally), or read it from an ephemeral resource such as `ephemeral "aws_secretsmanager_secret_version"`. Do not put it in a committed `.tfvars` file.
+- Terraform cannot detect drift in a write-only value. To rotate the secret, change it in Okta and increment `okta_client_secret_version`; the SSM parameter is rewritten only when that number changes. Running Lambda containers pick the new value up on their next cold start.
+
+```hcl
+variable "okta_client_secret" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+```
+
 ## How it works
 
 1. A request without a valid session cookie is answered with a 302 to Okta's authorize endpoint. State, nonce and the PKCE verifier are stored in a short-lived HMAC-signed cookie (`__Host-okta_login`, 10 minutes) together with the originally requested path.
@@ -67,7 +83,7 @@ Assign the users or groups that may access the site to the application. Anyone n
 4. Every later request verifies the cookie's signature and claims (JWKS cached for one hour per Lambda container), strips the auth cookies and forwards the request to CloudFront. When the token expires the flow starts again; with an active Okta session this is a transparent redirect.
 5. `/_auth/logout` clears the cookie and signs the user out of Okta, returning to `https://<domain>/`.
 
-The client secret is read from SSM Parameter Store once per Lambda container. It is never embedded in the function code.
+The client secret is read from SSM Parameter Store once per Lambda container. It is never embedded in the function code, the plan or the state.
 
 ## Wiring notes
 
@@ -112,7 +128,9 @@ as described in the `.pre-commit-config.yaml` file
 
 ## Versioning and Releases
 
-This module follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). Releases are automated with [semantic-release](https://github.com/semantic-release/semantic-release) and derived from [Conventional Commits](https://www.conventionalcommits.org/) on `main`:
+This module follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). Releases are automated with [semantic-release](https://github.com/semantic-release/semantic-release) and derived from [Conventional Commits](https://www.conventionalcommits.org/) on `main`.
+
+**The module is pre-1.0.** While the version is `0.x`, the public interface may change between MINOR versions: breaking commits (`feat!:`, `fix!:`, `BREAKING CHANGE:`) bump MINOR, not MAJOR (`releaseRules` in `.releaserc.json`). Pin to an exact `0.x.y` version. Once the interface is stable the rule is removed and `1.0.0` is cut; from then on:
 
 | Commit type | Example | Version bump |
 | ----------- | ------- | ------------ |
@@ -133,7 +151,7 @@ Always pin the module to a specific version so that MAJOR releases never reach y
 
 | Name | Version |
 | ---- | ------- |
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.10 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.11 |
 | <a name="requirement_archive"></a> [archive](#requirement\_archive) | >= 2.7 |
 | <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 6.0 |
 
@@ -166,7 +184,8 @@ No modules.
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_name"></a> [name](#input\_name) | Name of the Lambda@Edge function, IAM role and SSM parameter prefix. | `string` | `"cloudfront-okta-auth"` | no |
 | <a name="input_okta_client_id"></a> [okta\_client\_id](#input\_okta\_client\_id) | Client ID of the Okta OIDC web application. | `string` | n/a | yes |
-| <a name="input_okta_client_secret"></a> [okta\_client\_secret](#input\_okta\_client\_secret) | Client secret of the Okta OIDC web application. Stored as an SSM SecureString parameter in us-east-1. | `string` | n/a | yes |
+| <a name="input_okta_client_secret"></a> [okta\_client\_secret](#input\_okta\_client\_secret) | Client secret of the Okta OIDC web application. Ephemeral: written to an SSM SecureString parameter in us-east-1 and never stored in state or plan. Bump okta\_client\_secret\_version to rotate it. | `string` | n/a | yes |
+| <a name="input_okta_client_secret_version"></a> [okta\_client\_secret\_version](#input\_okta\_client\_secret\_version) | Version marker for okta\_client\_secret. Terraform only rewrites the SSM parameter when this value changes, so increment it whenever the secret is rotated. | `number` | `1` | no |
 | <a name="input_okta_issuer"></a> [okta\_issuer](#input\_okta\_issuer) | Okta issuer URL without trailing slash: the org authorization server (https://acme.okta.com) or a custom authorization server (https://acme.okta.com/oauth2/default). | `string` | n/a | yes |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to all resources. | `map(string)` | `{}` | no |
 

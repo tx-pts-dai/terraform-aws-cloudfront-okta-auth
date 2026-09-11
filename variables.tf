@@ -9,13 +9,25 @@ variable "okta_client_id" {
 }
 
 variable "okta_client_secret" {
-  description = "Client secret of the Okta OIDC web application. Stored as an SSM SecureString parameter in us-east-1."
+  description = "Client secret of the Okta OIDC web application. Ephemeral: written to an SSM SecureString parameter in us-east-1 and never stored in state or plan. Bump okta_client_secret_version to rotate it."
   type        = string
   sensitive   = true
+  ephemeral   = true
 
   validation {
     condition     = length(var.okta_client_secret) > 0
     error_message = "okta_client_secret must not be empty."
+  }
+}
+
+variable "okta_client_secret_version" {
+  description = "Version marker for okta_client_secret. Terraform only rewrites the SSM parameter when this value changes, so increment it whenever the secret is rotated."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.okta_client_secret_version >= 1 && floor(var.okta_client_secret_version) == var.okta_client_secret_version
+    error_message = "okta_client_secret_version must be a positive integer."
   }
 }
 
